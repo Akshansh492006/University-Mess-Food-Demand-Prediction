@@ -1,0 +1,81 @@
+{
+  "best_model_name": "Random Forest",
+  "train_rows": 14327,
+  "train_features": [
+    "Student_Attendance",
+    "Previous_Day_Demand",
+    "Previous_Week_Demand",
+    "Historical_Avg_Demand",
+    "Month",
+    "Examination_Day",
+    "Holiday",
+    "Weekend",
+    "Day_of_Week",
+    "Meal_Period",
+    "Food_Item",
+    "Food_Category",
+    "Weather"
+  ],
+  "model_results": {
+    "Dummy Baseline": {
+      "val_metrics": {
+        "MAE": 49.5947,
+        "MSE": 3677.9295,
+        "RMSE": 60.6459,
+        "R2": -0.0263
+      },
+      "test_metrics": {
+        "MAE": 60.1758,
+        "MSE": 5699.6083,
+        "RMSE": 75.4958,
+        "R2": -0.0531
+      },
+      "train_time_s": 0.23
+    },
+    "Linear Regression": {
+      "val_metrics": {
+        "MAE": 12.0042,
+        "MSE": 232.4289,
+        "RMSE": 15.2456,
+        "R2": 0.9351
+      },
+      "test_metrics": {
+        "MAE": 14.5133,
+        "MSE": 348.3148,
+        "RMSE": 18.6632,
+        "R2": 0.9356
+      },
+      "train_time_s": 0.08
+    },
+    "Decision Tree": {
+      "val_metrics": {
+        "MAE": 13.8631,
+        "MSE": 314.5565,
+        "RMSE": 17.7357,
+        "R2": 0.9122
+      },
+      "test_metrics": {
+        "MAE": 16.2612,
+        "MSE": 437.3963,
+        "RMSE": 20.914,
+        "R2": 0.9192
+      },
+      "train_time_s": 16.75
+    },
+    "Random Forest": {
+      "val_metrics": {
+        "MAE": 11.6978,
+        "MSE": 227.3003,
+        "RMSE": 15.0765,
+        "R2": 0.9366
+      },
+      "test_metrics": {
+        "MAE": 13.7139,
+        "MSE": 313.4149,
+        "RMSE": 17.7035,
+        "R2": 0.9421
+      },
+      "train_time_s": 38.01
+    }
+  }
+}
