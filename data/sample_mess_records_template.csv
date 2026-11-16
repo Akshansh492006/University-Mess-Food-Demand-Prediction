@@ -1,0 +1,11 @@
+Date,Meal_Period,Food_Item,Food_Category,Student_Attendance,Expected_Attendance,Weather,Examination_Day,Holiday,Quantity_Prepared,Quantity_Consumed,Quantity_Wasted,Previous_Day_Demand,Previous_Week_Demand,Historical_Average_Demand
+2025-01-06,Breakfast,Idli Sambar,South Indian,440,450,Sunny,0,0,195,172,23,178.0,175.5,176.2
+2025-01-06,Lunch,Rice Dal,Staples,680,700,Sunny,0,0,325,294,31,298.0,292.0,296.5
+2025-01-06,Dinner,Roti Sabzi,Staples,590,600,Sunny,0,0,270,242,28,245.0,240.0,244.1
+2025-01-07,Breakfast,Poha,Snacks,435,450,Cloudy,0,0,175,153,22,158.0,154.0,155.8
+2025-01-07,Lunch,Rajma Chawal,North Indian,675,700,Cloudy,0,0,305,271,34,275.0,270.0,273.4
+2025-01-07,Dinner,Dal Makhani,Dal,585,600,Cloudy,0,0,260,231,29,235.0,232.0,234.6
+2025-01-08,Breakfast,Upma,South Indian,420,450,Rainy,1,0,140,118,22,142.0,146.0,145.0
+2025-01-08,Lunch,Veg Biryani,Rice Dishes,610,650,Rainy,1,0,290,262,28,300.0,305.0,302.1
+2025-01-08,Dinner,Aloo Matar,North Indian,530,570,Rainy,1,0,230,201,29,228.0,225.0,226.7
+

@@ -13,9 +13,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-from src.predict   import load_model, load_metadata
-from src.evaluate  import get_feature_importances, residual_stats
-from src.preprocessing import prepare_features
+from src.predict        import load_model, load_metadata
+from src.evaluate       import get_feature_importances, residual_stats
+from src.preprocessing  import prepare_demand_features
 
 st.set_page_config(page_title="ML Insights", page_icon="🧠", layout="wide")
 
@@ -68,30 +68,45 @@ def render():
         return
 
     # ── Best model banner ─────────────────────────────────────
-    best_name = meta.get("best_model_name", "Unknown")
-    st.success(f"🏆 **Best Model Selected:** {best_name}")
+    demand_meta = meta.get("demand_model", {})
+    waste_meta  = meta.get("waste_model",  {})
+    best_name   = demand_meta.get("best_model_name", "Unknown")
+    st.success(f"🏆 **Best Demand Model:** {best_name}  |  🗑️ **Best Waste Model:** {waste_meta.get('best_model_name', 'Unknown')}")
 
-    # ── Algorithm comparison ──────────────────────────────────
+    # ── Algorithm comparison (tabs: Demand / Waste) ───────────
     st.subheader("📊 Algorithm Comparison")
-    model_results = meta.get("model_results", {})
-    rows = []
-    for name, info in model_results.items():
-        vm = info.get("val_metrics", {})
-        tm = info.get("test_metrics", {})
-        rows.append({
-            "Model":        name,
-            "Val MAE":      vm.get("MAE", "-"),
-            "Val RMSE":     vm.get("RMSE", "-"),
-            "Val R²":       vm.get("R2", "-"),
-            "Test MAE":     tm.get("MAE", "-"),
-            "Test RMSE":    tm.get("RMSE", "-"),
-            "Test R²":      tm.get("R2", "-"),
-            "Train Time(s)":info.get("train_time_s", "-"),
-        })
-    comp_df = pd.DataFrame(rows)
-    st.dataframe(comp_df, use_container_width=True, hide_index=True)
+    tab_d, tab_w = st.tabs(["🤖 Demand Models", "🗑️ Waste Models"])
 
-    # ── Metric comparison charts ───────────────────────────────
+    def _build_comparison_df(results: dict) -> pd.DataFrame:
+        rows = []
+        for name, info in results.items():
+            vm = info.get("val_metrics", {})
+            tm = info.get("test_metrics", {})
+            rows.append({
+                "Model":        name,
+                "Val MAE":      vm.get("MAE", "-"),
+                "Val RMSE":     vm.get("RMSE", "-"),
+                "Val R²":       vm.get("R2", "-"),
+                "Test MAE":     tm.get("MAE", "-"),
+                "Test RMSE":    tm.get("RMSE", "-"),
+                "Test R²":      tm.get("R2", "-"),
+                "Train Time(s)":info.get("train_time_s", "-"),
+            })
+        return pd.DataFrame(rows)
+
+    with tab_d:
+        model_results = demand_meta.get("results", {})
+        comp_df = _build_comparison_df(model_results)
+        st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+    with tab_w:
+        waste_results = waste_meta.get("results", {})
+        waste_df = _build_comparison_df(waste_results)
+        st.dataframe(waste_df, use_container_width=True, hide_index=True)
+
+    # ── Metric comparison charts (Demand models) ──────────────
+    st.subheader("📈 Demand Model — Metric Charts")
+    comp_df = _build_comparison_df(demand_meta.get("results", {}))
     col1, col2 = st.columns(2)
 
     with col1:
@@ -125,7 +140,7 @@ def render():
     st.subheader("🔍 Feature Importance (Best Model)")
     try:
         pipeline = load_model()
-        X_sample, y_sample = prepare_features(df.tail(2000))
+        X_sample, y_sample = prepare_demand_features(df.tail(2000))
         fi_df = get_feature_importances(pipeline, X_sample.columns.tolist())
 
         if not fi_df.empty:
@@ -150,7 +165,7 @@ def render():
         st.subheader("🎯 Actual vs Predicted (Test Sample)")
         n_sample = min(500, len(df))
         test_sample = df.tail(n_sample).copy()
-        X_t, y_t = prepare_features(test_sample)
+        X_t, y_t = prepare_demand_features(test_sample)
         y_pred   = pipeline.predict(X_t)
 
         avp_df = pd.DataFrame({
@@ -202,16 +217,23 @@ def render():
 
     # ── Training dataset stats ────────────────────────────────
     st.subheader("📋 Training Dataset Statistics")
+    split_info = meta.get("dataset_split", {})
+    demand_features = meta.get("demand_model", {}).get("features", [])
     st.markdown(f"- **Total records:** {len(df):,}")
     st.markdown(f"- **Date range:** {df['Date'].min().date()} → {df['Date'].max().date()}")
     st.markdown(f"- **Meal periods:** {', '.join(df['Meal_Period'].unique())}")
     st.markdown(f"- **Unique food items:** {df['Food_Item'].nunique()}")
-    st.markdown(f"- **Train features used:** {meta.get('train_features', [])}")
+    if split_info:
+        st.markdown(f"- **Train / Val / Test rows:** {split_info.get('train_rows','?')} / {split_info.get('val_rows','?')} / {split_info.get('test_rows','?')}")
+    if demand_features:
+        st.markdown(f"- **Demand model features ({len(demand_features)}):** `{', '.join(demand_features)}`")
 
     with st.expander("📊 Full Descriptive Statistics"):
-        num_cols = ["Actual_Food_Demand","Quantity_Prepared","Quantity_Consumed",
-                    "Leftover_Quantity","Food_Waste_Percentage","Student_Attendance"]
-        st.dataframe(df[num_cols].describe().round(2), use_container_width=True)
+        available_cols = [c for c in
+                          ["Actual_Food_Demand","Quantity_Prepared","Quantity_Consumed",
+                           "Leftover_Quantity","Food_Waste_Percentage","Student_Attendance"]
+                          if c in df.columns]
+        st.dataframe(df[available_cols].describe().round(2), use_container_width=True)
 
 
 render()

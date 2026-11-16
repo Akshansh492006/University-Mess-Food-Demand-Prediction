@@ -1,10 +1,7 @@
 """
 train.py
---------
-Model training, hyperparameter search and model selection.
-
-Author : ML Engineering Team
-Date   : 2024
+Model training, hyperparameter search, and model selection for both Food Demand
+and Food Waste prediction pipelines using time-series validation.
 """
 
 import os
@@ -12,93 +9,97 @@ import sys
 import json
 import time
 import joblib
-import numpy as np
-
-from sklearn.linear_model    import LinearRegression
-from sklearn.tree            import DecisionTreeRegressor
-from sklearn.ensemble        import RandomForestRegressor
-from sklearn.dummy           import DummyRegressor
-from sklearn.pipeline        import Pipeline
+from typing import Dict, Any, Tuple
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.dummy import DummyRegressor
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 
-# Project imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.preprocessing import (
-    build_preprocessor, prepare_features, chronological_split, clean_dataframe
+    build_demand_preprocessor,
+    build_waste_preprocessor,
+    prepare_demand_features,
+    prepare_waste_features,
+    chronological_split,
+    clean_dataframe
 )
 from src.evaluate import evaluate_model
 
-RANDOM_SEED  = 42
-MODELS_DIR   = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+RANDOM_SEED = 42
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 
-def _build_pipeline(model) -> Pipeline:
-    """Wrap preprocessor + model in a single sklearn Pipeline."""
+def build_pipeline_wrapper(preprocessor, model) -> Pipeline:
+    """Encapsulate ColumnTransformer preprocessor and estimator into an execution Pipeline."""
     return Pipeline([
-        ("preprocessor", build_preprocessor()),
-        ("model",        model),
+        ("preprocessor", preprocessor),
+        ("model", model),
     ])
 
 
-def _param_grid(name: str) -> dict:
-    """Return hyperparameter search space for RandomizedSearchCV."""
+def get_param_grid(name: str) -> Dict[str, list]:
+    """Retrieve hyperparameter search distributions for candidate estimators."""
     if name == "Decision Tree":
         return {
-            "model__max_depth":        [4, 6, 8, 10, 12, None],
+            "model__max_depth": [4, 6, 8, 10, 12],
             "model__min_samples_leaf": [2, 4, 8, 16],
-            "model__min_samples_split":[2, 5, 10],
+            "model__min_samples_split": [2, 5, 10],
         }
     if name == "Random Forest":
         return {
-            "model__n_estimators":     [100, 200, 300],
-            "model__max_depth":        [6, 8, 10, None],
+            "model__n_estimators": [100, 150, 200],
+            "model__max_depth": [6, 8, 10, 12],
             "model__min_samples_leaf": [2, 4, 8],
-            "model__max_features":     ["sqrt", "log2", 0.5],
+            "model__max_features": ["sqrt", 0.5],
         }
-    return {}   # Linear Regression / Dummy — no tuning needed
+    if name == "Gradient Boosting":
+        return {
+            "model__n_estimators": [80, 120],
+            "model__learning_rate": [0.05, 0.1],
+            "model__max_depth": [3, 4, 5],
+            "model__subsample": [0.8, 1.0],
+        }
+    return {}
 
 
-def train_all_models(train_df, val_df, test_df,
-                     n_iter: int = 20) -> dict:
-    """
-    Train all candidate models on train_df, select best on val_df,
-    report final test performance.
-
-    Returns
-    -------
-    dict with keys: 'results', 'best_model_name', 'best_pipeline'
-    """
-    X_train, y_train = prepare_features(train_df)
-    X_val,   y_val   = prepare_features(val_df)
-    X_test,  y_test  = prepare_features(test_df)
-
-    candidate_models = {
-        "Dummy Baseline":  DummyRegressor(strategy="mean"),
+def train_model_suite(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+    preprocessor_builder,
+    n_iter: int = 10
+) -> Dict[str, Any]:
+    """Train, optimize, and benchmark full suite of candidate algorithms across chronological splits."""
+    candidate_estimators = {
+        "Dummy Baseline": DummyRegressor(strategy="mean"),
         "Linear Regression": LinearRegression(),
-        "Decision Tree":   DecisionTreeRegressor(random_state=RANDOM_SEED),
-        "Random Forest":   RandomForestRegressor(
-                               random_state=RANDOM_SEED, n_jobs=-1),
+        "Decision Tree": DecisionTreeRegressor(random_state=RANDOM_SEED),
+        "Random Forest": RandomForestRegressor(random_state=RANDOM_SEED, n_jobs=-1),
+        "Gradient Boosting": GradientBoostingRegressor(random_state=RANDOM_SEED),
     }
 
     results = {}
 
-    for name, base_model in candidate_models.items():
-        print(f"\n{'='*55}")
-        print(f"  Training: {name}")
-        print(f"{'='*55}")
+    for name, estimator in candidate_estimators.items():
         t0 = time.time()
-
-        pipeline = _build_pipeline(base_model)
-        grid     = _param_grid(name)
+        pipeline = build_pipeline_wrapper(preprocessor_builder(), estimator)
+        grid = get_param_grid(name)
 
         if grid:
-            # Use TimeSeriesSplit on training data for CV
-            tscv = TimeSeriesSplit(n_splits=5)
+            cv = TimeSeriesSplit(n_splits=3)
             search = RandomizedSearchCV(
                 pipeline,
                 param_distributions=grid,
                 n_iter=n_iter,
-                cv=tscv,
+                cv=cv,
                 scoring="neg_mean_squared_error",
                 refit=True,
                 random_state=RANDOM_SEED,
@@ -106,107 +107,140 @@ def train_all_models(train_df, val_df, test_df,
                 verbose=0,
             )
             search.fit(X_train, y_train)
-            best_pipe = search.best_estimator_
-            print(f"  Best params : {search.best_params_}")
+            best_pipeline = search.best_estimator_
+            best_params = search.best_params_
         else:
             pipeline.fit(X_train, y_train)
-            best_pipe = pipeline
+            best_pipeline = pipeline
+            best_params = {}
 
         elapsed = time.time() - t0
-
-        # Evaluate on val set (model selection)
-        val_metrics  = evaluate_model(best_pipe, X_val,  y_val,  label="Val")
-        # Evaluate on test set (unbiased final report)
-        test_metrics = evaluate_model(best_pipe, X_test, y_test, label="Test")
+        val_eval = evaluate_model(best_pipeline, X_val, y_val, label=f"{name} (Val)")
+        test_eval = evaluate_model(best_pipeline, X_test, y_test, label=f"{name} (Test)")
 
         results[name] = {
-            "pipeline":      best_pipe,
-            "val_metrics":   val_metrics,
-            "test_metrics":  test_metrics,
-            "train_time_s":  round(elapsed, 2),
+            "pipeline": best_pipeline,
+            "best_params": best_params,
+            "val_metrics": val_eval,
+            "test_metrics": test_eval,
+            "train_time_s": round(elapsed, 2),
         }
 
-        print(f"  Val  → MAE={val_metrics['MAE']:.2f}  RMSE={val_metrics['RMSE']:.2f}  R²={val_metrics['R2']:.4f}")
-        print(f"  Test → MAE={test_metrics['MAE']:.2f}  RMSE={test_metrics['RMSE']:.2f}  R²={test_metrics['R2']:.4f}")
+    valid_candidates = {k: v for k, v in results.items() if k != "Dummy Baseline"}
+    winner_name = max(valid_candidates, key=lambda k: valid_candidates[k]["val_metrics"]["R2"])
+    winner_pipeline = results[winner_name]["pipeline"]
 
-    # ── Model selection: best validation R² ──────────────────
-    # Exclude dummy from "best"
-    scored = {k: v for k, v in results.items() if k != "Dummy Baseline"}
-    best_name = max(scored, key=lambda k: scored[k]["val_metrics"]["R2"])
-    best_pipeline = results[best_name]["pipeline"]
-
-    print(f"\n✅  Best model selected: {best_name}")
     return {
-        "results":          results,
-        "best_model_name":  best_name,
-        "best_pipeline":    best_pipeline,
-        "X_train": X_train, "y_train": y_train,
-        "X_val":   X_val,   "y_val":   y_val,
-        "X_test":  X_test,  "y_test":  y_test,
+        "results": results,
+        "best_model_name": winner_name,
+        "best_pipeline": winner_pipeline,
     }
 
 
-def save_model(pipeline, model_name: str, results: dict,
-               train_shape: tuple, feature_names: list):
-    """Save model and metadata to disk."""
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    model_path = os.path.join(MODELS_DIR, "best_model.pkl")
-    joblib.dump(pipeline, model_path)
-    print(f"[train] Model saved → {model_path}")
+def train_all_models(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    n_iter: int = 10
+) -> Dict[str, Any]:
+    """Train and optimize both demand prediction and waste prediction pipelines."""
+    print("Training Food Demand Prediction Models...")
+    X_d_train, y_d_train = prepare_demand_features(train_df)
+    X_d_val, y_d_val = prepare_demand_features(val_df)
+    X_d_test, y_d_test = prepare_demand_features(test_df)
 
-    # Build serialisable metrics
-    def _clean(d):
-        return {k: float(v) for k, v in d.items() if k != "predictions"}
+    demand_results = train_model_suite(
+        X_d_train, y_d_train, X_d_val, y_d_val, X_d_test, y_d_test,
+        preprocessor_builder=build_demand_preprocessor,
+        n_iter=n_iter,
+    )
 
-    meta = {
-        "best_model_name":  model_name,
-        "train_rows":       train_shape[0],
-        "train_features":   feature_names,
-        "model_results":    {
-            name: {
-                "val_metrics":  _clean(info["val_metrics"]),
-                "test_metrics": _clean(info["test_metrics"]),
-                "train_time_s": info["train_time_s"],
-            }
-            for name, info in results.items()
+    print("\nTraining Food Waste Prediction Models...")
+    X_w_train, y_w_train = prepare_waste_features(train_df)
+    X_w_val, y_w_val = prepare_waste_features(val_df)
+    X_w_test, y_w_test = prepare_waste_features(test_df)
+
+    waste_results = train_model_suite(
+        X_w_train, y_w_train, X_w_val, y_w_val, X_w_test, y_w_test,
+        preprocessor_builder=build_waste_preprocessor,
+        n_iter=n_iter,
+    )
+
+    return {
+        "demand": demand_results,
+        "waste": waste_results,
+        "features": {
+            "demand": X_d_train.columns.tolist(),
+            "waste": X_w_train.columns.tolist(),
         },
+        "train_rows": len(train_df),
+        "val_rows": len(val_df),
+        "test_rows": len(test_df),
     }
 
-    meta_path = os.path.join(MODELS_DIR, "model_metadata.json")
-    with open(meta_path, "w") as f:
-        json.dump(meta, f, indent=2)
-    print(f"[train] Metadata saved → {meta_path}")
 
-    return model_path, meta_path
+def save_models_and_metadata(training_output: Dict[str, Any]) -> Tuple[str, str, str]:
+    """Serialize trained pipelines with compression and save benchmark performance metadata."""
+    os.makedirs(MODELS_DIR, exist_ok=True)
+
+    demand_model_path = os.path.join(MODELS_DIR, "demand_model.pkl")
+    joblib.dump(training_output["demand"]["best_pipeline"], demand_model_path, compress=3)
+
+    legacy_model_path = os.path.join(MODELS_DIR, "best_model.pkl")
+    joblib.dump(training_output["demand"]["best_pipeline"], legacy_model_path, compress=3)
+
+    waste_model_path = os.path.join(MODELS_DIR, "waste_model.pkl")
+    joblib.dump(training_output["waste"]["best_pipeline"], waste_model_path, compress=3)
+
+    def extract_serializable(model_dict: Dict[str, Any]) -> Dict[str, Any]:
+        extracted = {}
+        for name, data in model_dict["results"].items():
+            extracted[name] = {
+                "val_metrics": {k: float(v) for k, v in data["val_metrics"].items() if k != "predictions"},
+                "test_metrics": {k: float(v) for k, v in data["test_metrics"].items() if k != "predictions"},
+                "train_time_s": data["train_time_s"],
+                "best_params": data["best_params"],
+            }
+        return extracted
+
+    metadata = {
+        "demand_model": {
+            "best_model_name": training_output["demand"]["best_model_name"],
+            "features": training_output["features"]["demand"],
+            "results": extract_serializable(training_output["demand"]),
+        },
+        "waste_model": {
+            "best_model_name": training_output["waste"]["best_model_name"],
+            "features": training_output["features"]["waste"],
+            "results": extract_serializable(training_output["waste"]),
+        },
+        "dataset_split": {
+            "train_rows": training_output["train_rows"],
+            "val_rows": training_output["val_rows"],
+            "test_rows": training_output["test_rows"],
+        },
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    metadata_path = os.path.join(MODELS_DIR, "model_metadata.json")
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    return demand_model_path, waste_model_path, metadata_path
 
 
-# ── Entry point ──────────────────────────────────────────────
 if __name__ == "__main__":
     from src.data_generation import generate_dataset
 
-    base     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    csv_path = os.path.join(base, "data", "mess_dataset.csv")
-
+    csv_path = os.path.join(BASE_DIR, "data", "mess_dataset.csv")
     if not os.path.exists(csv_path):
-        print("[train] Generating dataset …")
-        df = generate_dataset(output_path=csv_path)
+        raw_df = generate_dataset(output_path=csv_path)
     else:
-        import pandas as pd
-        print("[train] Loading existing dataset …")
-        df = pd.read_csv(csv_path, parse_dates=["Date"])
+        raw_df = pd.read_csv(csv_path, parse_dates=["Date"])
 
-    df = clean_dataframe(df)
-    train_df, val_df, test_df = chronological_split(df)
+    cleaned_df = clean_dataframe(raw_df)
+    train_split, val_split, test_split = chronological_split(cleaned_df)
 
-    out = train_all_models(train_df, val_df, test_df)
-
-    save_model(
-        pipeline      = out["best_pipeline"],
-        model_name    = out["best_model_name"],
-        results       = out["results"],
-        train_shape   = out["X_train"].shape,
-        feature_names = out["X_train"].columns.tolist(),
-    )
-
-    print("\n[train] ✅ All done!")
-
+    output = train_all_models(train_split, val_split, test_split, n_iter=10)
+    d_path, w_path, m_path = save_models_and_metadata(output)
+    print(f"\nArtifacts successfully written:\n- {d_path}\n- {w_path}\n- {m_path}")

@@ -11,7 +11,6 @@ Date   : 2024
 import os
 import sys
 
-# Ensure src/ is on the Python path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
@@ -27,7 +26,7 @@ st.set_page_config(
     }
 )
 
-# ── Global CSS ────────────────────────────────────────────────
+
 st.markdown("""
 <style>
 /* ---- sidebar ---- */
@@ -87,6 +86,47 @@ h3 {color: #bfdbfe !important; font-weight: 600;}
     border-radius: 8px !important; padding: 12px 16px !important; margin-bottom: 16px !important;
     font-size: 0.9rem !important; color: #86efac !important;
 }
+
+/* ---- kill Streamlit's white chart/block containers ---- */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"],
+[data-testid="block-container"],
+.element-container,
+[data-testid="stPlotlyChart"] > div,
+[data-testid="stForm"] {
+    background: transparent !important;
+}
+
+/* ---- tab panel background ---- */
+[data-baseweb="tab-panel"] {
+    background: transparent !important;
+}
+
+/* ---- expander ---- */
+[data-testid="stExpander"] {
+    background: #181d2a !important;
+    border: 1px solid #2d3548 !important;
+    border-radius: 8px !important;
+}
+
+/* ---- dataframe wrapper ---- */
+[data-testid="stDataFrameContainer"] {
+    background: #181d2a !important;
+    border-radius: 8px !important;
+}
+
+/* ---- selectbox / number_input / slider wrappers ---- */
+[data-baseweb="select"] > div,
+[data-baseweb="input"] > div,
+[data-testid="stSlider"] {
+    background: #1e2535 !important;
+    border-color: #2d3548 !important;
+}
+
+/* ---- radio / checkbox ---- */
+[data-testid="stRadio"] > label,
+[data-testid="stCheckbox"] > label {
+    color: #cbd5e1 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,7 +141,6 @@ for demonstration purposes and does NOT represent real university mess records.
 """, unsafe_allow_html=True)
 
 
-# ── Home / landing page ───────────────────────────────────────
 st.title("🍽️ University Mess Food Demand & Waste Prediction System")
 st.markdown("---")
 

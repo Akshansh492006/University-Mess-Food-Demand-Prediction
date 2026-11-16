@@ -132,7 +132,7 @@ def render():
                         "predicted_demand":   result["predicted_demand"],
                         "suggested_qty":      result["suggested_qty"],
                         "estimated_surplus":  result["estimated_surplus"],
-                        "model_name":         meta.get("best_model_name","Unknown"),
+                        "model_name":         meta.get("demand_model", {}).get("best_model_name", "Gradient Boosting"),
                     })
                 except Exception:
                     pass

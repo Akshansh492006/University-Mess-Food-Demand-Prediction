@@ -1,33 +1,35 @@
 """
 preprocessing.py
-----------------
-Data preprocessing and feature engineering for the Mess Prediction System.
-Builds scikit-learn Pipelines and ColumnTransformer to avoid target leakage.
-
-Author : ML Engineering Team
-Date   : 2024
+Data preprocessing and feature engineering for the University Mess Prediction System.
+Constructs leak-free ColumnTransformer pipelines for both demand and waste estimation.
 """
 
-import numpy as np
+from typing import Tuple, List
 import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import (
-    StandardScaler, OrdinalEncoder, OneHotEncoder
-)
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
 from sklearn.impute import SimpleImputer
 
+DEMAND_TARGET = "Actual_Food_Demand"
+WASTE_TARGET = "Actual_Food_Waste"
 
-# ──────────────────────────────────────────────────────────────
-# Column groups (must match data_generation.py schema)
-# ──────────────────────────────────────────────────────────────
-TARGET_COL = "Actual_Food_Demand"
+DEMAND_LEAKY_COLS = [
+    "Quantity_Prepared",
+    "Quantity_Consumed",
+    "Leftover_Quantity",
+    "Actual_Food_Waste",
+    "Food_Waste_Percentage",
+]
 
-# Features used by the model (no target-leaking columns)
-LEAKY_COLS = ["Quantity_Prepared", "Quantity_Consumed",
-              "Leftover_Quantity", "Food_Waste_Percentage"]
+WASTE_LEAKY_COLS = [
+    "Quantity_Consumed",
+    "Leftover_Quantity",
+    "Food_Waste_Percentage",
+    "Actual_Food_Demand",
+]
 
-NUMERIC_FEATURES = [
+DEMAND_NUMERIC_FEATURES = [
     "Student_Attendance",
     "Previous_Day_Demand",
     "Previous_Week_Demand",
@@ -38,76 +40,69 @@ NUMERIC_FEATURES = [
     "Weekend",
 ]
 
-ORDINAL_FEATURES  = ["Day_of_Week"]
-NOMINAL_FEATURES  = ["Meal_Period", "Food_Item", "Food_Category", "Weather"]
+WASTE_NUMERIC_FEATURES = [
+    "Quantity_Prepared",
+    "Student_Attendance",
+    "Expected_Attendance",
+    "Historical_Waste",
+    "Previous_Day_Demand",
+    "Previous_Week_Demand",
+    "Month",
+    "Examination_Day",
+    "Holiday",
+    "Weekend",
+]
 
-DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
-             "Friday", "Saturday", "Sunday"]
+ORDINAL_FEATURES = ["Day_of_Week"]
+NOMINAL_FEATURES = ["Meal_Period", "Food_Item", "Food_Category", "Weather"]
 
-ALL_FEATURES = NUMERIC_FEATURES + ORDINAL_FEATURES + NOMINAL_FEATURES
+DAY_ORDER = [
+    "Monday", "Tuesday", "Wednesday", "Thursday",
+    "Friday", "Saturday", "Sunday"
+]
 
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Basic data cleaning:
-      - Drop duplicate rows.
-      - Coerce numeric columns.
-      - Fill or drop missing values.
-      - Validate ranges.
-    """
-    df = df.copy()
+    """Clean records, coerce numeric types, remove duplicates, and fill missing features."""
+    cleaned = df.copy()
+    cleaned.drop_duplicates(inplace=True)
 
-    # Remove duplicates
-    before = len(df)
-    df.drop_duplicates(inplace=True)
-    dropped = before - len(df)
-    if dropped:
-        print(f"[preprocessing] Removed {dropped} duplicate rows.")
+    if "Actual_Food_Waste" not in cleaned.columns and "Leftover_Quantity" in cleaned.columns:
+        cleaned["Actual_Food_Waste"] = cleaned["Leftover_Quantity"]
+    if "Expected_Attendance" not in cleaned.columns and "Student_Attendance" in cleaned.columns:
+        cleaned["Expected_Attendance"] = cleaned["Student_Attendance"]
+    if "Historical_Waste" not in cleaned.columns and "Leftover_Quantity" in cleaned.columns:
+        cleaned["Historical_Waste"] = cleaned.groupby(["Meal_Period", "Food_Item"])["Leftover_Quantity"].transform(
+            lambda s: s.rolling(30, min_periods=1).mean()
+        ).fillna(25.0)
 
-    # Coerce numerics
-    for col in NUMERIC_FEATURES:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+    numeric_cols = list(set(DEMAND_NUMERIC_FEATURES + WASTE_NUMERIC_FEATURES))
+    for col in numeric_cols:
+        if col in cleaned.columns:
+            cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce")
+            median_val = cleaned[col].median()
+            cleaned[col] = cleaned[col].fillna(median_val if pd.notna(median_val) else 0.0)
 
-    # Fill missing numerics with median
-    for col in NUMERIC_FEATURES:
-        if col in df.columns and df[col].isnull().any():
-            median_val = df[col].median()
-            df[col].fillna(median_val, inplace=True)
-            print(f"[preprocessing] Filled NaN in '{col}' with median={median_val:.2f}")
-
-    # Drop rows where target is missing
-    if TARGET_COL in df.columns:
-        before = len(df)
-        df.dropna(subset=[TARGET_COL], inplace=True)
-        if len(df) < before:
-            print(f"[preprocessing] Dropped {before - len(df)} rows with missing target.")
-
-    # Validate binary columns
     for col in ["Examination_Day", "Holiday", "Weekend"]:
-        if col in df.columns:
-            df[col] = df[col].clip(0, 1).astype(int)
+        if col in cleaned.columns:
+            cleaned[col] = cleaned[col].clip(0, 1).astype(int)
 
-    # Clip demand values
-    if TARGET_COL in df.columns:
-        df[TARGET_COL] = df[TARGET_COL].clip(lower=0)
+    if DEMAND_TARGET in cleaned.columns:
+        cleaned[DEMAND_TARGET] = pd.to_numeric(cleaned[DEMAND_TARGET], errors="coerce").clip(lower=0)
+    if WASTE_TARGET in cleaned.columns:
+        cleaned[WASTE_TARGET] = pd.to_numeric(cleaned[WASTE_TARGET], errors="coerce").clip(lower=0)
 
-    return df
+    return cleaned
 
 
-def build_preprocessor() -> ColumnTransformer:
-    """
-    Build and return a ColumnTransformer that:
-      - Scales numeric features.
-      - Ordinal-encodes day-of-week.
-      - One-hot-encodes nominal categoricals.
-    """
-    numeric_pipeline = Pipeline([
+def build_preprocessor(numeric_features: List[str]) -> ColumnTransformer:
+    """Build scikit-learn ColumnTransformer scaling numerics and encoding categoricals."""
+    numeric_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
-        ("scaler",  StandardScaler()),
+        ("scaler", StandardScaler()),
     ])
 
-    ordinal_pipeline = Pipeline([
+    ordinal_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
         ("encoder", OrdinalEncoder(
             categories=[DAY_ORDER],
@@ -116,7 +111,7 @@ def build_preprocessor() -> ColumnTransformer:
         )),
     ])
 
-    nominal_pipeline = Pipeline([
+    nominal_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
         ("encoder", OneHotEncoder(
             handle_unknown="ignore",
@@ -124,95 +119,61 @@ def build_preprocessor() -> ColumnTransformer:
         )),
     ])
 
-    preprocessor = ColumnTransformer(
+    return ColumnTransformer(
         transformers=[
-            ("num",     numeric_pipeline,  NUMERIC_FEATURES),
-            ("ord",     ordinal_pipeline,  ORDINAL_FEATURES),
-            ("nom",     nominal_pipeline,  NOMINAL_FEATURES),
+            ("num", numeric_pipe, numeric_features),
+            ("ord", ordinal_pipe, ORDINAL_FEATURES),
+            ("nom", nominal_pipe, NOMINAL_FEATURES),
         ],
         remainder="drop",
     )
-    return preprocessor
 
 
-def prepare_features(df: pd.DataFrame,
-                     drop_leaky: bool = True) -> tuple[pd.DataFrame, pd.Series]:
-    """
-    Return (X, y) after cleaning and dropping leaky columns.
+def build_demand_preprocessor() -> ColumnTransformer:
+    """Construct ColumnTransformer specifically configured for demand forecasting."""
+    return build_preprocessor(DEMAND_NUMERIC_FEATURES)
 
-    Parameters
-    ----------
-    df         : raw DataFrame
-    drop_leaky : whether to remove leaky columns from X
 
-    Returns
-    -------
-    X : feature DataFrame
-    y : target Series
-    """
-    df = clean_dataframe(df)
+def build_waste_preprocessor() -> ColumnTransformer:
+    """Construct ColumnTransformer specifically configured for food waste forecasting."""
+    return build_preprocessor(WASTE_NUMERIC_FEATURES)
 
-    y = df[TARGET_COL].copy()
 
-    drop_cols = [TARGET_COL]
-    if drop_leaky:
-        drop_cols += [c for c in LEAKY_COLS if c in df.columns]
-
-    # Also drop Date (not directly used by model — lag features capture it)
-    if "Date" in df.columns:
-        drop_cols.append("Date")
-
-    X = df.drop(columns=drop_cols, errors="ignore")
-
-    # Ensure only allowed feature columns remain
-    X = X[[c for c in ALL_FEATURES if c in X.columns]]
-
+def prepare_demand_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    """Extract features and target for the food demand model without target leakage."""
+    cleaned = clean_dataframe(df)
+    y = cleaned[DEMAND_TARGET].copy()
+    drop_cols = [DEMAND_TARGET, "Date"] + [c for c in DEMAND_LEAKY_COLS if c in cleaned.columns]
+    X = cleaned.drop(columns=drop_cols, errors="ignore")
+    allowed = DEMAND_NUMERIC_FEATURES + ORDINAL_FEATURES + NOMINAL_FEATURES
+    X = X[[c for c in allowed if c in X.columns]]
     return X, y
 
 
-def chronological_split(df: pd.DataFrame,
-                        train_ratio: float = 0.70,
-                        val_ratio:   float = 0.15
-                        ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Split DataFrame chronologically into train / validation / test sets.
-    No shuffling — preserves temporal order.
-
-    Parameters
-    ----------
-    df          : cleaned DataFrame with 'Date' column
-    train_ratio : fraction of data for training
-    val_ratio   : fraction for validation (remainder → test)
-
-    Returns
-    -------
-    train_df, val_df, test_df
-    """
-    df = df.sort_values("Date").reset_index(drop=True)
-    n = len(df)
-    t_end = int(n * train_ratio)
-    v_end  = int(n * (train_ratio + val_ratio))
-
-    train_df = df.iloc[:t_end].copy()
-    val_df   = df.iloc[t_end:v_end].copy()
-    test_df  = df.iloc[v_end:].copy()
-
-    print(f"[preprocessing] Train={len(train_df):,}  Val={len(val_df):,}  Test={len(test_df):,}")
-    return train_df, val_df, test_df
+def prepare_waste_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    """Extract features and target for the food waste model without target leakage."""
+    cleaned = clean_dataframe(df)
+    y = cleaned[WASTE_TARGET].copy()
+    drop_cols = [WASTE_TARGET, "Date"] + [c for c in WASTE_LEAKY_COLS if c in cleaned.columns]
+    X = cleaned.drop(columns=drop_cols, errors="ignore")
+    allowed = WASTE_NUMERIC_FEATURES + ORDINAL_FEATURES + NOMINAL_FEATURES
+    X = X[[c for c in allowed if c in X.columns]]
+    return X, y
 
 
-if __name__ == "__main__":
-    import sys, os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from src.data_generation import generate_dataset
+def chronological_split(
+    df: pd.DataFrame,
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Partition tabular dataset chronologically without shuffling to protect temporal structure."""
+    ordered = df.sort_values("Date").reset_index(drop=True)
+    total_len = len(ordered)
+    train_end = int(total_len * train_ratio)
+    val_end = int(total_len * (train_ratio + val_ratio))
 
-    df = generate_dataset()
-    train, val, test = chronological_split(df)
-    X_train, y_train = prepare_features(train)
-    print("X_train shape:", X_train.shape)
-    print("Features:", X_train.columns.tolist())
+    train_split = ordered.iloc[:train_end].copy()
+    val_split = ordered.iloc[train_end:val_end].copy()
+    test_split = ordered.iloc[val_end:].copy()
 
-    pre = build_preprocessor()
-    X_arr = pre.fit_transform(X_train, y_train)
-    print("Transformed shape:", X_arr.shape)
-
+    return train_split, val_split, test_split

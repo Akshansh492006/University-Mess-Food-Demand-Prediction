@@ -1,81 +1,238 @@
 {
-  "best_model_name": "Random Forest",
-  "train_rows": 14327,
-  "train_features": [
-    "Student_Attendance",
-    "Previous_Day_Demand",
-    "Previous_Week_Demand",
-    "Historical_Avg_Demand",
-    "Month",
-    "Examination_Day",
-    "Holiday",
-    "Weekend",
-    "Day_of_Week",
-    "Meal_Period",
-    "Food_Item",
-    "Food_Category",
-    "Weather"
-  ],
-  "model_results": {
-    "Dummy Baseline": {
-      "val_metrics": {
-        "MAE": 49.5947,
-        "MSE": 3677.9295,
-        "RMSE": 60.6459,
-        "R2": -0.0263
+  "demand_model": {
+    "best_model_name": "Gradient Boosting",
+    "features": [
+      "Student_Attendance",
+      "Previous_Day_Demand",
+      "Previous_Week_Demand",
+      "Historical_Avg_Demand",
+      "Month",
+      "Examination_Day",
+      "Holiday",
+      "Weekend",
+      "Day_of_Week",
+      "Meal_Period",
+      "Food_Item",
+      "Food_Category",
+      "Weather"
+    ],
+    "results": {
+      "Dummy Baseline": {
+        "val_metrics": {
+          "MAE": 52.7195,
+          "MSE": 4184.3626,
+          "RMSE": 64.6866,
+          "R2": -0.0315
+        },
+        "test_metrics": {
+          "MAE": 55.9697,
+          "MSE": 5050.2684,
+          "RMSE": 71.0652,
+          "R2": -0.0297
+        },
+        "train_time_s": 0.7,
+        "best_params": {}
       },
-      "test_metrics": {
-        "MAE": 60.1758,
-        "MSE": 5699.6083,
-        "RMSE": 75.4958,
-        "R2": -0.0531
+      "Linear Regression": {
+        "val_metrics": {
+          "MAE": 11.6131,
+          "MSE": 216.5007,
+          "RMSE": 14.714,
+          "R2": 0.9466
+        },
+        "test_metrics": {
+          "MAE": 13.5152,
+          "MSE": 302.9412,
+          "RMSE": 17.4052,
+          "R2": 0.9382
+        },
+        "train_time_s": 0.24,
+        "best_params": {}
       },
-      "train_time_s": 0.23
-    },
-    "Linear Regression": {
-      "val_metrics": {
-        "MAE": 12.0042,
-        "MSE": 232.4289,
-        "RMSE": 15.2456,
-        "R2": 0.9351
+      "Decision Tree": {
+        "val_metrics": {
+          "MAE": 12.0138,
+          "MSE": 241.3653,
+          "RMSE": 15.5359,
+          "R2": 0.9405
+        },
+        "test_metrics": {
+          "MAE": 14.4357,
+          "MSE": 348.0969,
+          "RMSE": 18.6574,
+          "R2": 0.929
+        },
+        "train_time_s": 22.28,
+        "best_params": {
+          "model__min_samples_split": 2,
+          "model__min_samples_leaf": 16,
+          "model__max_depth": 10
+        }
       },
-      "test_metrics": {
-        "MAE": 14.5133,
-        "MSE": 348.3148,
-        "RMSE": 18.6632,
-        "R2": 0.9356
+      "Random Forest": {
+        "val_metrics": {
+          "MAE": 10.5691,
+          "MSE": 186.9911,
+          "RMSE": 13.6745,
+          "R2": 0.9539
+        },
+        "test_metrics": {
+          "MAE": 12.5641,
+          "MSE": 268.3698,
+          "RMSE": 16.382,
+          "R2": 0.9453
+        },
+        "train_time_s": 12.47,
+        "best_params": {
+          "model__n_estimators": 200,
+          "model__min_samples_leaf": 4,
+          "model__max_features": 0.5,
+          "model__max_depth": 10
+        }
       },
-      "train_time_s": 0.08
-    },
-    "Decision Tree": {
-      "val_metrics": {
-        "MAE": 13.8631,
-        "MSE": 314.5565,
-        "RMSE": 17.7357,
-        "R2": 0.9122
-      },
-      "test_metrics": {
-        "MAE": 16.2612,
-        "MSE": 437.3963,
-        "RMSE": 20.914,
-        "R2": 0.9192
-      },
-      "train_time_s": 16.75
-    },
-    "Random Forest": {
-      "val_metrics": {
-        "MAE": 11.6978,
-        "MSE": 227.3003,
-        "RMSE": 15.0765,
-        "R2": 0.9366
-      },
-      "test_metrics": {
-        "MAE": 13.7139,
-        "MSE": 313.4149,
-        "RMSE": 17.7035,
-        "R2": 0.9421
-      },
-      "train_time_s": 38.01
+      "Gradient Boosting": {
+        "val_metrics": {
+          "MAE": 10.2355,
+          "MSE": 174.975,
+          "RMSE": 13.2278,
+          "R2": 0.9569
+        },
+        "test_metrics": {
+          "MAE": 11.8667,
+          "MSE": 235.9691,
+          "RMSE": 15.3613,
+          "R2": 0.9519
+        },
+        "train_time_s": 17.07,
+        "best_params": {
+          "model__subsample": 0.8,
+          "model__n_estimators": 120,
+          "model__max_depth": 4,
+          "model__learning_rate": 0.1
+        }
+      }
     }
-  }
+  },
+  "waste_model": {
+    "best_model_name": "Gradient Boosting",
+    "features": [
+      "Quantity_Prepared",
+      "Student_Attendance",
+      "Expected_Attendance",
+      "Historical_Waste",
+      "Previous_Day_Demand",
+      "Previous_Week_Demand",
+      "Month",
+      "Examination_Day",
+      "Holiday",
+      "Weekend",
+      "Day_of_Week",
+      "Meal_Period",
+      "Food_Item",
+      "Food_Category",
+      "Weather"
+    ],
+    "results": {
+      "Dummy Baseline": {
+        "val_metrics": {
+          "MAE": 16.2146,
+          "MSE": 407.6999,
+          "RMSE": 20.1916,
+          "R2": -0.0316
+        },
+        "test_metrics": {
+          "MAE": 17.4807,
+          "MSE": 501.5967,
+          "RMSE": 22.3964,
+          "R2": -0.0296
+        },
+        "train_time_s": 0.06,
+        "best_params": {}
+      },
+      "Linear Regression": {
+        "val_metrics": {
+          "MAE": 4.7655,
+          "MSE": 37.5203,
+          "RMSE": 6.1254,
+          "R2": 0.9051
+        },
+        "test_metrics": {
+          "MAE": 4.807,
+          "MSE": 40.2886,
+          "RMSE": 6.3473,
+          "R2": 0.9173
+        },
+        "train_time_s": 0.08,
+        "best_params": {}
+      },
+      "Decision Tree": {
+        "val_metrics": {
+          "MAE": 5.2088,
+          "MSE": 46.9183,
+          "RMSE": 6.8497,
+          "R2": 0.8813
+        },
+        "test_metrics": {
+          "MAE": 5.4264,
+          "MSE": 53.4591,
+          "RMSE": 7.3116,
+          "R2": 0.8903
+        },
+        "train_time_s": 0.94,
+        "best_params": {
+          "model__min_samples_split": 2,
+          "model__min_samples_leaf": 8,
+          "model__max_depth": 12
+        }
+      },
+      "Random Forest": {
+        "val_metrics": {
+          "MAE": 4.9255,
+          "MSE": 41.6756,
+          "RMSE": 6.4557,
+          "R2": 0.8945
+        },
+        "test_metrics": {
+          "MAE": 5.2106,
+          "MSE": 47.4063,
+          "RMSE": 6.8852,
+          "R2": 0.9027
+        },
+        "train_time_s": 9.22,
+        "best_params": {
+          "model__n_estimators": 200,
+          "model__min_samples_leaf": 4,
+          "model__max_features": 0.5,
+          "model__max_depth": 10
+        }
+      },
+      "Gradient Boosting": {
+        "val_metrics": {
+          "MAE": 4.5777,
+          "MSE": 36.2002,
+          "RMSE": 6.0167,
+          "R2": 0.9084
+        },
+        "test_metrics": {
+          "MAE": 4.7908,
+          "MSE": 40.0815,
+          "RMSE": 6.331,
+          "R2": 0.9177
+        },
+        "train_time_s": 15.24,
+        "best_params": {
+          "model__subsample": 0.8,
+          "model__n_estimators": 120,
+          "model__max_depth": 4,
+          "model__learning_rate": 0.1
+        }
+      }
+    }
+  },
+  "dataset_split": {
+    "train_rows": 14327,
+    "val_rows": 3070,
+    "test_rows": 3071
+  },
+  "updated_at": "2026-11-15 15:54:14"
 }
